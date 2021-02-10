@@ -174,13 +174,6 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  // TODO: > Max ops
-  // int first_byte = x & 0xAA;
-  // int second_byte = (x >> 8) & 0xAA;
-  // int third_byte = (x >> 16) & 0xAA;
-  // int fourth_byte = (x >> 24) & 0xAA;
-  // int all = first_byte | second_byte << 8 | third_byte << 16 | fourth_byte << 24;
-  // return !(~((all ^ (all << 1)) + 1));
   int n = x;
   n &= n >> 16;
   n &= n >> 8;
@@ -254,13 +247,6 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  // int n = x;
-  // n |= n >> 16;
-  // n |= n >> 8;
-  // n |= n >> 4;
-  // n |= n >> 2;
-  // n |= n >> 1;
-  // printf("x = %d / n = %d \n", x, n);
   int n = x;
   int is_not_zero = ((n | (~n + 1)) >> 31) & 1;
   return (is_not_zero & 0) | (is_not_zero ^ 1);
@@ -334,7 +320,6 @@ int floatFloat2Int(unsigned uf) {
   int E = ((uf & 0x7f800000) >> 23) - 127;
   unsigned int frac = uf & 0x007fffff;
   unsigned int sign = (uf >> 31) & 1;
-  // unsigned long ans = 0;
   int ans = 0; 
 
   if (E < 0) return 0;
