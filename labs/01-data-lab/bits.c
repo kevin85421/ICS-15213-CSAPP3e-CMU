@@ -203,10 +203,8 @@ int negate(int x) {
  */
 int isAsciiDigit(int x) {
   int diff_char0 = x + (~48 + 1);                   // x - 0x30
-  int sign_bit_char0 = (diff_char0 >> 31) & 1;      // sign bit
   int diff_char9 = 57 + (~x + 1);                   // 0x39 - x
-  int sign_bit_char9 = (diff_char9 >> 31) & 1;      // sign bit
-  return !sign_bit_char0 & !sign_bit_char9;
+  return !(((diff_char0 | diff_char9) >> 31) & 1);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -228,14 +226,16 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  int x_sign_bit = (x >> 31) & 1;             // sign bit of x
-  int y_sign_bit = (y >> 31) & 1;             // sign bit of y
-  int sign_diff = (x_sign_bit & ~y_sign_bit); // x: negative, y: positive
-  int diff = x + (~y + 1);                    // x - y
-  int sign_bit = (diff >> 31) & 1;            // sign bit
-  int equal = !diff;                          // x == y
-  // !(~x_sign_bit & y_sign_bit)              // x: positive, y: negative 
-  return (sign_bit | equal | sign_diff) & !(~x_sign_bit & y_sign_bit);
+  int sameSign = y + ~x + 1; 
+  // 1: false (y < x )
+  // 0: true  (y >= x)
+	int oppoSign = y;              
+  // 1: y < 0 && x > 0 -> false 
+  // 0: y > 0 && x < 0 -> true
+  int checkSign = ((x^y) >> 31) & 1;
+  // conditional(checkSign, oppoSign, sameSign)
+  int condition = ((((!!checkSign) << 31) >> 31) & oppoSign) | ((((!checkSign) << 31) >> 31) & sameSign);
+	return !((condition >> 31) & 1);
 }
 //4
 /* 
@@ -248,8 +248,8 @@ int isLessOrEqual(int x, int y) {
  */
 int logicalNeg(int x) {
   int n = x;
-  int is_not_zero = ((n | (~n + 1)) >> 31) & 1;
-  return (is_not_zero & 0) | (is_not_zero ^ 1);
+  int is_not_zero = ((n | (~n + 1)) >> 31);
+  return is_not_zero + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
