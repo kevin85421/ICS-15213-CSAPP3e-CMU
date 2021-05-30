@@ -30,6 +30,17 @@ team_t team = {
     ""
 };
 
+#define DEBUGx
+/* If you want debugging output, use the following macro.  When you hand
+ * in, remove the #define DEBUG line. */
+#ifdef DEBUG
+# define DBG_PRINTF(...) printf(__VA_ARGS__)
+# define CHECKHEAP(verbose) mm_checkheap(verbose)
+#else
+# define DBG_PRINTF(...)
+# define CHECKHEAP(verbose)
+#endif
+
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
 
@@ -116,14 +127,15 @@ int mm_init(void)
     heap_listp += (2*WSIZE);                     //line:vm:mm:endinit
     free_listp = 0; 
 /* $end mminit */
-#ifdef NEXT_FIT
-    rover = heap_listp;
-#endif
+
 /* $begin mminit */
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) 
 	    return -1;
+#ifdef NEXT_FIT
+    rover = free_listp;
+#endif
     return 0;
 }
 /* $end mminit */
@@ -203,11 +215,25 @@ static void *coalesce(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
 
     if (prev_alloc && next_alloc) {            /* Case 1 */
+#ifdef NEXT_FIT
+        /* Make sure the rover isn't pointing into the free block */
+        /* that we just coalesced */
+        if (free_listp == NULL) {
+            rover = bp;
+        }
+#endif
         insert_free_listp(bp);
 	    return bp;
     }
 
     else if (prev_alloc && !next_alloc) {      /* Case 2 */
+#ifdef NEXT_FIT
+        /* Make sure the rover isn't pointing into the free block */
+        /* that we just coalesced */
+        if (rover == NEXT_BLKP(bp)) {
+            rover = bp;
+        }
+#endif
         remove_free_listp(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
@@ -223,6 +249,13 @@ static void *coalesce(void *bp)
     }
 
     else {                                     /* Case 4 */
+#ifdef NEXT_FIT
+        /* Make sure the rover isn't pointing into the free block */
+        /* that we just coalesced */
+        if (rover == NEXT_BLKP(bp)) {
+            rover = PREV_BLKP(bp);
+        }
+#endif
         remove_free_listp(NEXT_BLKP(bp));
         remove_free_listp(PREV_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
@@ -231,14 +264,7 @@ static void *coalesce(void *bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-/* $end mmfree */
-#ifdef NEXT_FIT
-    /* Make sure the rover isn't pointing into the free block */
-    /* that we just coalesced */
-    if ((rover > (char *)bp) && (rover < NEXT_BLKP(bp))) 
-	    rover = bp;
-#endif
-/* $begin mmfree */
+
     insert_free_listp(bp);
     return bp;
 }
@@ -285,7 +311,8 @@ void *mm_realloc(void *ptr, size_t size)
  * checkheap - We don't check anything right now. 
  */
 void mm_checkheap(int verbose)  
-{ 
+{
+    checkheap(verbose); 
 }
 
 /* 
@@ -325,7 +352,10 @@ static void *extend_heap(size_t words)
 static void place(void *bp, size_t asize)
      /* $end mmplace-proto */
 {
-    size_t csize = GET_SIZE(HDRP(bp));   
+    size_t csize = GET_SIZE(HDRP(bp));
+#ifdef NEXT_FIT
+    char* nextptr = GET_NEXTP(bp);
+#endif
     remove_free_listp(bp);
     if ((csize - asize) >= (2*DSIZE)) { 
         PUT(HDRP(bp), PACK(asize, 1));
@@ -339,6 +369,13 @@ static void place(void *bp, size_t asize)
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
+#ifdef NEXT_FIT
+    if (nextptr != NULL) {
+        rover = nextptr;
+    } else {
+        rover = free_listp;
+    }
+#endif
 }
 /* $end mmplace */
 
@@ -355,14 +392,13 @@ static void *find_fit(size_t asize)
 #ifdef NEXT_FIT 
     /* Next fit search */
     char *oldrover = rover;
-
     /* Search from the rover to the end of list */
-    for ( ; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover))
+    for ( ; rover != 0; rover = GET_NEXTP(rover))
         if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
             return rover;
 
     /* search from start of list to old rover */
-    for (rover = heap_listp; rover < oldrover; rover = NEXT_BLKP(rover))
+    for (rover = free_listp; rover != oldrover; rover = GET_NEXTP(rover))
         if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
             return rover;
 
@@ -370,9 +406,9 @@ static void *find_fit(size_t asize)
 #else 
 /* $begin mmfirstfit */
     /* First fit search */
-    void *bp;
 
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+    for (void* bp = free_listp; bp != 0; bp = GET_NEXTP(bp))
+    {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
@@ -404,10 +440,15 @@ static void printblock(void *bp)
 
 static void checkblock(void *bp) 
 {
-    if ((size_t)bp % 8)
-	    printf("Error: %p is not doubleword aligned\n", bp);
-    if (GET(HDRP(bp)) != GET(FTRP(bp)))
-	    printf("Error: header does not match footer\n");
+    if ((size_t)bp % 8) {
+        printf("Error: %p is not doubleword aligned\n", bp);
+        exit(1);
+    }
+	    
+    if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+        printf("Error: header does not match footer\n");
+        exit(1);
+    }
 }
 
 static void print_free_list() {
@@ -428,8 +469,11 @@ void checkheap(int verbose)
     if (verbose)
 	    printf("Heap (%p):\n", heap_listp);
 
-    if ((GET_SIZE(HDRP(heap_listp)) != DSIZE) || !GET_ALLOC(HDRP(heap_listp)))
-	    printf("Bad prologue header\n");
+    if ((GET_SIZE(HDRP(heap_listp)) != DSIZE) || !GET_ALLOC(HDRP(heap_listp))) {
+        printf("Bad prologue header\n");
+        exit(1);
+    }
+	    
     checkblock(heap_listp);
 
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
@@ -440,11 +484,20 @@ void checkheap(int verbose)
 
     if (verbose)
 	    printblock(bp);
-    if ((GET_SIZE(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp))))
-	    printf("Bad epilogue header\n");
+    if ((GET_SIZE(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp)))) {
+        printf("Bad epilogue header\n");
+        exit(1);
+    }
+	    
     if (verbose) {
         print_free_list();
     }
+
+#ifdef NEXT_FIT
+    if (verbose) {
+        printf("rover: %p (Line %d)\n", rover, __LINE__);
+    }
+#endif
 }
 
 static void insert_free_listp(void* bp) 
