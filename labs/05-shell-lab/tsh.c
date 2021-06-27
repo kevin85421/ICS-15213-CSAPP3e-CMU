@@ -36,9 +36,9 @@
 /* 
  * Jobs states: FG (foreground), BG (background), ST (stopped)
  * Job state transitions and enabling actions:
- *     FG -> ST  : ctrl-z
- *     ST -> FG  : fg command
- *     ST -> BG  : bg command
+ *     FG -> ST  : ctrl-z (SIGTSTP)
+ *     ST -> FG  : fg command (SIGCONT)
+ *     ST -> BG  : bg command (SIGCONT)
  *     BG -> FG  : fg command
  * At most 1 job can be in the FG state.
  */
@@ -296,26 +296,28 @@ void do_bgfg(char **argv)
     }
 
     struct job_t* job;
-    if (argv[1][0] == '%') {
+    if (argv[1][0] == '%') { // JID (Job ID)
         int jid = atoi(&argv[1][1]);
         job = getjobjid(jobs, jid);
         if (job == NULL) {
             printf("%%%d: No such job\n",jid);
             return;
         }
-    } else if (isdigit(argv[1][0])) {
+    } else if (isdigit(argv[1][0])) { // PID
         int pid = atoi(&argv[1][0]); 
         job = getjobpid(jobs, pid);
         if (job == NULL) {
             printf("(%d): No such process\n", pid);
             return;
         }
-    } else {
+    } else { // Invalid argument (ex: bg abc)
         printf("%s: argument must be a PID or %%jobid\n", first);
         return;
     }
  
-    kill(-(job->pid),SIGCONT);
+    // The default action for SIGTSTP is to place a process in the stopped state, 
+    // where it remains until it is awakened by the receipt of a SIGCONT signal.
+    kill(-(job->pid),SIGCONT); 
 
     if (strcmp(first, "bg") == 0) {
         job->state = BG;
